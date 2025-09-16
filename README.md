@@ -1,181 +1,279 @@
-# Lattice Boltzmann Method for Fluid Simulation - IMPROVED VERSION
+# Fluid Image Boundary Simulation v2.0.0 - GUI Edition
 
-This code implements the Lattice Boltzmann Method (LBM) for fluid simulation with significant improvements to functionality and mathematical accuracy.
+A comprehensive Lattice Boltzmann Method (LBM) fluid simulation package with an intuitive GUI interface for real-time visualization and parameter control.
 
-## 🚀 Major Improvements Made
+## 🚀 Major Improvements in v2.0.0
 
-### Critical Bug Fixes
-- **Fixed runtime error** in `compute_fluid_flow` function where `sumpop` parameter was incorrectly used
-- **Corrected units conversion** in `mps_to_lu` function with proper physics-based formula
-- **Fixed pressure calculation** using correct equation of state (P = ρ × cs²) instead of incorrect velocity-based formula
+### New GUI Interface
+- **Interactive Parameter Control**: Real-time adjustment of simulation parameters
+- **Multi-view Visualization**: Separate tabs for velocity, pressure, and combined views
+- **Live Simulation Monitoring**: Real-time diagnostics and stability analysis
+- **Configuration Management**: Save and load simulation configurations
+- **Obstacle Mask Loading**: Import custom obstacle geometries from PNG files
 
-### Mathematical Enhancements
-- **Added comprehensive validation** functions for lattice properties and mass/momentum conservation
-- **Improved stability analysis** with Mach number and Reynolds number checks
-- **Enhanced boundary conditions** with better error handling and numerical stability
-- **Added input validation** to prevent common parameter errors
+### Improved Project Structure
+- **Modular Design**: Clean separation of core simulation, GUI, and utilities
+- **Object-Oriented Architecture**: Proper encapsulation and reusable components
+- **Configuration System**: JSON-based configuration management
+- **Enhanced Error Handling**: Robust validation and error reporting
+- **Package Installation**: Proper Python package with setup.py
 
-### Code Quality Improvements
-- **Better documentation** with detailed function descriptions and parameter explanations
-- **Type hints** and consistent parameter naming throughout
-- **Error handling** for edge cases and numerical instabilities
-- **Modular validation functions** for debugging and verification
+### Enhanced Simulation Features
+- **Stability Analysis**: Real-time Mach number and Reynolds number monitoring
+- **Mathematical Validation**: Built-in checks for mass and momentum conservation
+- **Flexible Obstacle Creation**: Support for circles, rectangles, and custom masks
+- **Improved Boundary Conditions**: Enhanced Zou-He implementation with numerical stability
 
-## 📋 Function Reference
+## 📁 Project Structure
 
-### Core Functions
-
-#### `get_lattice_constants()`
-Returns the lattice constants for the D2Q9 Lattice Boltzmann Method.
-
-**Returns:**
-- `c`: np.ndarray of shape (9, 2) - Lattice velocity vectors
-- `t`: np.ndarray of shape (9,) - Lattice weights  
-- `noslip`: List of opposite velocity indices for bounce-back
-- `i1`, `i2`, `i3`: Boundary condition index arrays
-
-#### `mps_to_lu(flow_speed, dx, dt=1.0)`
-**IMPROVED**: Converts flow velocity from m/s to lattice units using correct formula.
-
-**Parameters:**
-- `flow_speed`: float - Flow velocity in m/s
-- `dx`: float - Lattice spacing in meters
-- `dt`: float - Time step in seconds (default=1.0)
-
-**Returns:**
-- `flow_speed_lu`: float - Velocity in lattice units
-
-**Formula:** `u_LU = u_physical × (dt / dx)`
-
-#### `compute_density(fin)`
-Computes macroscopic density from distribution functions.
-
-**Parameters:**
-- `fin`: np.ndarray of shape (q, nx, ny) - Distribution functions
-
-**Returns:**
-- `rho`: np.ndarray of shape (nx, ny) - Density field
-
-#### `equilibrium_distribution(q, nx, ny, rho, u, c, t)`
-**IMPROVED**: Computes Maxwell-Boltzmann equilibrium with validation.
-
-**Parameters:**
-- `q`: int - Number of lattice velocities (9 for D2Q9)
-- `nx`, `ny`: int - Grid dimensions
-- `rho`: np.ndarray of shape (nx, ny) - Density field
-- `u`: np.ndarray of shape (2, nx, ny) - Velocity field
-- `c`: np.ndarray of shape (q, 2) - Lattice velocities
-- `t`: np.ndarray of shape (q,) - Lattice weights
-
-**Returns:**
-- `feq`: np.ndarray of shape (q, nx, ny) - Equilibrium distributions
-
-#### `compute_fluid_flow(...)`
-**SIGNIFICANTLY IMPROVED**: Main LBM computation with enhanced stability and validation.
-
-**Key Improvements:**
-- Fixed parameter handling bug
-- Added comprehensive input validation
-- Improved boundary condition stability
-- Corrected pressure calculation
-- Better error handling
-
-### Validation Functions
-
-#### `validate_lattice_boltzmann_properties(fin, c, t, tolerance=1e-10)`
-**NEW**: Validates mathematical properties of the LBM implementation.
-
-**Checks:**
-- Weight normalization (Σt_i = 1)
-- Mass conservation (Σf_i = ρ)
-- Momentum conservation
-- Lattice structure validity
-
-#### `check_stability_conditions(u, omega, Ma_max=0.1)`
-**NEW**: Analyzes simulation stability conditions.
-
-**Checks:**
-- Mach number limits (Ma < 0.1 for stability)
-- Relaxation parameter bounds (0 < ω < 2)
-- Reynolds number estimation
-- Sound speed calculations
-
-### Utility Functions
-
-#### `create_dir_if_not_exists(dir_path)`
-Creates directory if it doesn't exist.
-
-#### `create_obstacle(shape, nx, ny, cx, cy, r, l=0, w=0)`
-Creates geometric obstacles (circle, rectangle, square).
-
-#### `load_mask(filename, scale=1.0)`
-Loads binary mask from PNG file with scaling support.
-
-## 🧪 Usage Example
-
-```python
-import model_lib as ml
-import numpy as np
-
-# Set up simulation parameters
-nx, ny = 100, 50
-q = 9
-Re = 300.0
-uLB = 0.05
-
-# Get lattice constants
-c, t, noslip, i1, i2, i3 = ml.get_lattice_constants()
-
-# Validate lattice properties
-validation = ml.validate_lattice_boltzmann_properties(
-    np.ones((q, nx, ny)), c, t)
-print(f"Lattice valid: {validation['lattice_structure_valid']}")
-
-# Set up simulation
-fin, vel, obstacle = ml.setup_cylinder_obstacle_and_perturbation(
-    q, 1.0, nx, ny, nx/4, ny/2, ny/9, uLB, ny-1, c, t)
-
-# Run simulation step
-omega = 1.5
-fin, u, rho, feq, fout, pressure = ml.compute_fluid_flow(
-    q, nx, ny, fin, vel, obstacle, omega, t, c, i1, i2, i3, noslip)
-
-# Check stability
-stability = ml.check_stability_conditions(u, omega)
-print(f"Simulation stable: {stability['mach_stable'] and stability['omega_stable']}")
+```
+FluidImageBoundarySim/
+├── fluid_sim/                 # Main package
+│   ├── core/                  # Core simulation logic
+│   │   ├── lattice.py         # Lattice constants and methods
+│   │   ├── simulation.py      # Main LBM simulation class
+│   │   └── validation.py      # Validation and stability tools
+│   ├── gui/                   # GUI interface
+│   │   ├── main_window.py     # Main application window
+│   │   ├── visualization.py   # Visualization panels
+│   │   └── controls.py        # Parameter control panels
+│   ├── utils/                 # Utility functions
+│   │   ├── config.py          # Configuration management
+│   │   ├── obstacles.py       # Obstacle creation tools
+│   │   └── file_utils.py      # File operations
+│   └── config/                # Configuration files
+├── examples/                  # Example scripts
+├── tests/                     # Test files
+├── docs/                      # Documentation
+├── gui_app.py                 # GUI application entry point
+├── test_new_structure.py      # Structure validation tests
+├── simulation_config.json     # Default configuration
+├── requirements.txt           # Python dependencies
+└── setup.py                   # Package installation script
 ```
 
-## 🔬 Testing
+## 🛠️ Installation
+
+### Option 1: Direct Installation
+```bash
+# Clone the repository
+git clone https://github.com/STOKEDMODELLER/FluidImageBoundarySim.git
+cd FluidImageBoundarySim
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install the package
+pip install -e .
+```
+
+### Option 2: Development Installation
+```bash
+# Clone and install in development mode
+git clone https://github.com/STOKEDMODELLER/FluidImageBoundarySim.git
+cd FluidImageBoundarySim
+pip install -e .[dev]
+```
+
+## 🎮 Usage
+
+### GUI Application
+Launch the interactive GUI application:
+```bash
+python gui_app.py
+```
+
+### Command Line Interface
+```python
+from fluid_sim import LBMSimulation, ConfigManager
+
+# Load configuration
+config_manager = ConfigManager()
+config = config_manager.load_config()
+
+# Create simulation
+sim = LBMSimulation(
+    nx=config.nx, 
+    ny=config.ny,
+    reynolds=config.reynolds,
+    flow_speed=config.flow_speed
+)
+
+# Setup obstacle
+sim.setup_cylinder_obstacle(
+    cx=config.obstacle_cx,
+    cy=config.obstacle_cy, 
+    r=config.obstacle_r
+)
+
+# Run simulation
+for i in range(1000):
+    diagnostics = sim.step()
+    if i % 100 == 0:
+        print(f"Step {i}: Max velocity = {diagnostics['max_velocity']:.4f}")
+```
+
+### Custom Obstacle from Image
+```python
+# Load obstacle from PNG file
+sim.setup_from_mask("path/to/obstacle_mask.png")
+
+# Or create geometric obstacles
+from fluid_sim.utils import create_obstacle
+obstacle = create_obstacle("circle", nx=250, ny=120, cx=60, cy=60, r=20)
+```
+
+## 🎯 GUI Features
+
+### Real-time Controls
+- **Grid Parameters**: Adjust simulation domain size
+- **Physical Parameters**: Modify Reynolds number and flow speed
+- **Obstacle Parameters**: Change obstacle position and size
+- **Simulation Controls**: Start/stop, single step, reset
+
+### Visualization Modes
+- **Velocity Tab**: Real-time velocity magnitude visualization
+- **Pressure Tab**: Pressure field visualization  
+- **Combined Tab**: Side-by-side velocity and pressure plots
+
+### Advanced Features
+- **Configuration Management**: Save/load simulation setups
+- **Stability Monitoring**: Real-time stability analysis
+- **Export Capabilities**: Save visualization images
+- **Diagnostics Panel**: Live simulation metrics
+
+## 📊 Configuration Management
+
+### JSON Configuration Format
+```json
+{
+  "nx": 250,
+  "ny": 120,
+  "reynolds": 300.0,
+  "flow_speed": 0.05,
+  "max_iterations": 5000,
+  "omega": null,
+  "obstacle_cx": 62.5,
+  "obstacle_cy": 60.0,
+  "obstacle_r": 13.3,
+  "colormap": "jet",
+  "dpi": 100
+}
+```
+
+### Configuration Usage
+```python
+from fluid_sim.utils import ConfigManager
+
+# Load existing configuration
+config_manager = ConfigManager()
+config = config_manager.load_config("my_config.json")
+
+# Modify parameters
+config_manager.update_config(reynolds=500.0, flow_speed=0.08)
+
+# Save configuration
+config_manager.save_config(config, "updated_config.json")
+```
+
+## 🧪 Testing
 
 Run the comprehensive test suite:
-
 ```bash
+# Test new structure
+python test_new_structure.py
+
+# Test original functionality (legacy)
 python test_improvements.py
 ```
 
-This will demonstrate all improvements and validate the mathematical correctness of the implementation.
+## 📋 Mathematical Foundation
 
-## 📊 Key Mathematical Corrections
+The simulation implements the **D2Q9 Lattice Boltzmann Method** with:
 
-1. **Units Conversion**: Fixed from `u_LU = u_phys × dx` to `u_LU = u_phys × (dt/dx)`
-2. **Pressure Equation**: Changed from `P = ρ × |u|²` to `P = ρ × cs²` where cs² = 1/3
-3. **Boundary Conditions**: Enhanced Zou-He implementation with division-by-zero protection
-4. **Parameter Validation**: Added checks for ω ∈ (0,2) and Mach number limits
+### Core Equations
+- **Equilibrium Distribution**: Maxwell-Boltzmann expanded to second order
+- **Collision Operator**: BGK approximation with single relaxation time
+- **Streaming Step**: Advection of distribution functions
+- **Boundary Conditions**: Zou-He implementation for velocity/pressure boundaries
 
-## 🎯 Performance & Stability
-
-The improved implementation provides:
-- ✅ Mathematically correct physics
-- ✅ Numerical stability validation
-- ✅ Comprehensive error handling
-- ✅ Better boundary condition treatment
-- ✅ Mass and momentum conservation
-- ✅ Proper pressure calculation
+### Key Physical Properties
+- **Sound Speed**: cs = 1/√3 in lattice units
+- **Kinematic Viscosity**: ν = (1/ω - 0.5)/3
+- **Pressure**: P = ρ × cs² (proper equation of state)
+- **Stability Condition**: Mach number < 0.1 for numerical stability
 
 ## 🔧 Requirements
 
+### Core Dependencies
+- Python >= 3.8
 - numpy >= 1.19.0
 - matplotlib >= 3.3.0
-- opencv-python >= 4.5.0
 - pillow >= 8.0.0
 - scipy >= 1.6.0
+
+### Optional Dependencies
+- opencv-python >= 4.5.0 (for video output)
+- tkinter (usually included with Python)
+
+## 📚 Examples
+
+### Basic Cylinder Flow
+```python
+from fluid_sim import LBMSimulation
+
+# Create simulation
+sim = LBMSimulation(nx=200, ny=100, reynolds=100)
+
+# Setup cylinder obstacle  
+sim.setup_cylinder_obstacle(cx=50, cy=50, r=10)
+
+# Run simulation
+for i in range(1000):
+    diagnostics = sim.step()
+    
+    # Check stability
+    if not diagnostics['is_stable']:
+        print(f"Warning: Simulation unstable at step {i}")
+```
+
+### Custom Configuration
+```python
+from fluid_sim.utils import ConfigManager, SimulationConfig
+
+# Create custom configuration
+config = SimulationConfig(
+    nx=300,
+    ny=150, 
+    reynolds=500.0,
+    flow_speed=0.1
+)
+
+# Validate and save
+config_manager = ConfigManager()
+if config_manager.validate_config(config):
+    config_manager.save_config(config, "custom_config.json")
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 👨‍💻 Author
+
+**STOKEDMODELLER** - Fluid dynamics simulation enthusiast
+
+## 🙏 Acknowledgments
+
+- Lattice Boltzmann Method community for theoretical foundations
+- NumPy and SciPy developers for numerical computing tools
+- Matplotlib team for visualization capabilities
+- tkinter developers for GUI framework
