@@ -4,37 +4,40 @@ import matplotlib.pyplot as plt
 import cv2
 import os
 
-obstacle1 = ml.load_mask("./bitmap667.png",1).transpose()
+# Load obstacle mask
+obstacle1 = ml.load_mask("./bitmap667.png", 1).transpose()
 obstacle = obstacle1
 plt.imshow(obstacle)
+
 # Set the directory where the images are located
 directory = './Ln_5/'
 ml.create_dir_if_not_exists(directory)
 
 ###### Flow definition #########################################################
-maxIter = 30000 # Total number of time iterations.
-Re      = 300.0  # Reynolds number.
-nx = obstacle.shape[0]; ny = obstacle.shape[1]; ly=ny-1.0; q = 9 # Lattice dimensions and populations.
-cx = nx/4; cy=ny/2; r=ny/9;          # Coordinates of the cylinder.
-uLB     = ml.mps_to_lu(0.05,ly / (ny - 1))                       # Velocity in lattice units.
-nulb    = uLB*r/Re; omega = 1.0 / (3.*nulb+0.5); # Relaxation parameter.
+maxIter = 30000  # Total number of time iterations.
+Re = 300.0       # Reynolds number.
+nx = obstacle.shape[0]; ny = obstacle.shape[1]; ly = ny - 1.0; q = 9  # Lattice dimensions and populations.
+cx = nx/4; cy = ny/2; r = ny/9          # Coordinates of the cylinder.
+
+# Correct units conversion: use dt=1.0 (unit time step) and dx based on domain
+dx = ly / (ny - 1)  # Physical spacing 
+uLB = ml.mps_to_lu(0.05, dx, dt=1.0)    # Velocity in lattice units.
+nulb = uLB * r / Re; omega = 1.0 / (3.*nulb + 0.5);  # Relaxation parameter.
 rho = 1
 
 c, t, noslip, i1, i2, i3 = ml.get_lattice_constants()
 
-fin, vel, obstacle_1, sumpop = ml.setup_cylinder_obstacle_and_perturbation(q,rho,nx, ny, cx, cy, r, uLB, ly,c,t, epsilon = 1e-4)
-
-sumpop = lambda fin: np.sum(fin, axis=0)
+fin, vel, obstacle_1 = ml.setup_cylinder_obstacle_and_perturbation(q, rho, nx, ny, cx, cy, r, uLB, ly, c, t, epsilon=1e-4)
 
 ###### Main time loop ##########################################################
 
-fig, ax = plt.subplots(figsize=(16,9))
+fig, ax = plt.subplots(figsize=(16, 9))
 
 for time in range(maxIter):
     print(time)
-    fin, u, rho, feq, fin_collide, pressure = ml.compute_fluid_flow(sumpop,q,nx, ny,fin, vel, obstacle, omega, t, c, i1, i2, i3, noslip)
-    if (time%50==0): 
-        ml.plot_velocity(u, time, directory, fig, ax, 'gist_gray',0,0.1, dpi=100)
+    fin, u, rho, feq, fin_collide, pressure = ml.compute_fluid_flow(q, nx, ny, fin, vel, obstacle, omega, t, c, i1, i2, i3, noslip)
+    if (time % 50 == 0): 
+        ml.plot_velocity(u, time, directory, fig, ax, 'gist_gray', 0, 0.1, dpi=100)
 
  
 # Set the output video file name
