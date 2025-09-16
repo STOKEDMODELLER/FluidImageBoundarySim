@@ -1,0 +1,14 @@
+# Core dependencies for fluid simulation
+numpy>=1.19.0
+matplotlib>=3.3.0
+pillow>=8.0.0
+scipy>=1.6.0
+
+# Optional dependencies for video processing
+opencv-python>=4.5.0
+
+# Development dependencies (optional)
+# pytest>=6.0.0
+# pytest-cov>=2.10.0
+# black>=21.0.0
+# flake8>=3.8.0

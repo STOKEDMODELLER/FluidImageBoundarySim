@@ -1,0 +1,18 @@
+{
+  "nx": 250,
+  "ny": 120,
+  "reynolds": 300.0,
+  "flow_speed": 0.05,
+  "max_iterations": 5000,
+  "omega": null,
+  "obstacle_cx": 62.5,
+  "obstacle_cy": 60.0,
+  "obstacle_r": 13.333333333333334,
+  "save_interval": 50,
+  "output_dir": "./output/",
+  "colormap": "jet",
+  "dpi": 100,
+  "window_width": 1200,
+  "window_height": 800,
+  "update_interval": 100
+}
