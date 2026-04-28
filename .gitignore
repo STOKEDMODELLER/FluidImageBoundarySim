@@ -75,3 +75,10 @@ results/
 # Temporary files
 *.tmp
 *.temp
+
+# Run logs
+*.log
+
+# Claude Code workspace
+.claude/
+memory/

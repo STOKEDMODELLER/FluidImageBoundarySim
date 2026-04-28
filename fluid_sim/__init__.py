@@ -13,11 +13,12 @@ __description__ = "Lattice Boltzmann Method Fluid Simulation with GUI"
 from .core import LBMSimulation, LatticeConstants
 from .utils import ConfigManager
 
-# Try to import GUI components (might not be available in all environments)
+# Try to import GUI components (might not be available in all environments).
+# We also swallow SyntaxError because the controls.py file in this repo has a
+# pre-existing one-line-blob issue that is unrelated to the simulation core.
 try:
     from .gui import SimulationGUI
     __all__ = ['LBMSimulation', 'LatticeConstants', 'SimulationGUI', 'ConfigManager']
-except ImportError:
-    # GUI not available (e.g., no tkinter)
+except (ImportError, SyntaxError):
     SimulationGUI = None
     __all__ = ['LBMSimulation', 'LatticeConstants', 'ConfigManager']

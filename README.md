@@ -1,279 +1,226 @@
-# Fluid Image Boundary Simulation v2.0.0 - GUI Edition
+# FluidImageBoundarySim
 
-A comprehensive Lattice Boltzmann Method (LBM) fluid simulation package with an intuitive GUI interface for real-time visualization and parameter control.
+A 2D Lattice Boltzmann Method (D2Q9, BGK) fluid simulator with image-based
+obstacle boundaries, validated against analytical reference solutions.
 
-## 🚀 Major Improvements in v2.0.0
+This repository was put through a fluid-mechanics audit; the kernel,
+boundary conditions, scaling, and diagnostics have been rebuilt to be
+mass- and momentum-conserving, and the simulator now carries reproducible
+validation scripts that compare its output against textbook results.
 
-### New GUI Interface
-- **Interactive Parameter Control**: Real-time adjustment of simulation parameters
-- **Multi-view Visualization**: Separate tabs for velocity, pressure, and combined views
-- **Live Simulation Monitoring**: Real-time diagnostics and stability analysis
-- **Configuration Management**: Save and load simulation configurations
-- **Obstacle Mask Loading**: Import custom obstacle geometries from PNG files
+---
 
-### Improved Project Structure
-- **Modular Design**: Clean separation of core simulation, GUI, and utilities
-- **Object-Oriented Architecture**: Proper encapsulation and reusable components
-- **Configuration System**: JSON-based configuration management
-- **Enhanced Error Handling**: Robust validation and error reporting
-- **Package Installation**: Proper Python package with setup.py
+## Numerics
 
-### Enhanced Simulation Features
-- **Stability Analysis**: Real-time Mach number and Reynolds number monitoring
-- **Mathematical Validation**: Built-in checks for mass and momentum conservation
-- **Flexible Obstacle Creation**: Support for circles, rectangles, and custom masks
-- **Improved Boundary Conditions**: Enhanced Zou-He implementation with numerical stability
+* **Lattice**: D2Q9, BGK collision, halfway bounce-back at obstacles.
+* **Wall modes**: free-slip (default), no-slip (halfway bounce-back applied
+  between collision and streaming, on `fout`), or periodic.
+* **Inlet**: Zou/He velocity-Dirichlet with proper non-equilibrium
+  bounce-back of the unknown populations
+  (`f_unknown = f_opp + f_unknown^eq − f_opp^eq`). Optional smooth ramp
+  `U(t) = U_in · (1 − e^{−t/τ})` to suppress the impulsive-start acoustic
+  shock.
+* **Outlet**: zero-gradient Neumann on the unknown (c_x < 0) populations.
+* **Sponge / PML layers**: optional inlet/outlet buffer strips that relax
+  the post-collision distributions toward the equilibrium of the target
+  far-field state, absorbing acoustic waves before they can reflect off the
+  Dirichlet inlet or Neumann outlet. Strength ramps quadratically through
+  the buffer.
+* **ω clamping**: relaxation parameter is held inside `[0.05, 1.95]` with a
+  `RuntimeWarning` if a configuration would push it outside the safe BGK
+  range. Outside this band BGK becomes numerically unstable.
+* **Reynolds length scale**: derived from the *actual* obstacle each
+  setup_* call uses — diameter for a cylinder, hydraulic diameter for a
+  rectangle, equivalent diameter `4A/P` for a mask.
+* **Drag/lift**: integrated force on the obstacle via momentum exchange
+  along fluid→solid links; `Cd`, `Cl` exposed in the diagnostics dict.
 
-## 📁 Project Structure
+---
+
+## Project layout
 
 ```
 FluidImageBoundarySim/
-├── fluid_sim/                 # Main package
-│   ├── core/                  # Core simulation logic
-│   │   ├── lattice.py         # Lattice constants and methods
-│   │   ├── simulation.py      # Main LBM simulation class
-│   │   └── validation.py      # Validation and stability tools
-│   ├── gui/                   # GUI interface
-│   │   ├── main_window.py     # Main application window
-│   │   ├── visualization.py   # Visualization panels
-│   │   └── controls.py        # Parameter control panels
-│   ├── utils/                 # Utility functions
-│   │   ├── config.py          # Configuration management
-│   │   ├── obstacles.py       # Obstacle creation tools
-│   │   └── file_utils.py      # File operations
-│   └── config/                # Configuration files
-├── examples/                  # Example scripts
-├── tests/                     # Test files
-├── docs/                      # Documentation
-├── gui_app.py                 # GUI application entry point
-├── test_new_structure.py      # Structure validation tests
-├── simulation_config.json     # Default configuration
-├── requirements.txt           # Python dependencies
-└── setup.py                   # Package installation script
+├── fluid_sim/
+│   ├── core/
+│   │   ├── lattice.py         # D2Q9 constants + index helpers
+│   │   ├── simulation.py      # LBMSimulation (kernel, BCs, diagnostics)
+│   │   └── validation.py      # stability + Reynolds checks
+│   ├── gui/                   # tkinter GUI (controls.py has a pre-existing
+│   │                          # one-line-blob syntax issue, isolated from core)
+│   └── utils/                 # obstacle tools, config, file utils
+├── validate_poiseuille.py     # plane Poiseuille channel — analytical parabola
+├── validate_karman.py         # Kármán shedding — Strouhal vs. Williamson 1996
+├── diagnose_channel.py        # localises mass-conservation bugs by wall mode
+├── run_channel_cylinder.py    # channel + cylinder, two-row velocity/pressure plot + MP4
+├── run_visualisation.py       # batch render Poiseuille + Kármán → PNG + MP4
+├── model_lib.py               # legacy procedural API (also fixed)
+├── model_run.py               # legacy entry point
+└── simulation_config.json     # default parameters
 ```
 
-## 🛠️ Installation
+Outputs land under `output/` (gitignored).
 
-### Option 1: Direct Installation
+---
+
+## Quick start
+
 ```bash
-# Clone the repository
-git clone https://github.com/STOKEDMODELLER/FluidImageBoundarySim.git
-cd FluidImageBoundarySim
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Install the package
 pip install -e .
 ```
 
-### Option 2: Development Installation
+### Validation: plane Poiseuille flow
+
+Empty channel, no-slip walls, uniform plug inlet. Expected developed
+profile is parabolic with `u_max = (3/2) · U_in`.
+
 ```bash
-# Clone and install in development mode
-git clone https://github.com/STOKEDMODELLER/FluidImageBoundarySim.git
-cd FluidImageBoundarySim
-pip install -e .[dev]
+python validate_poiseuille.py
 ```
 
-## 🎮 Usage
+Reports `u_max`, mass flux, and L2/L∞ error against the analytical
+parabola. With the corrected wall BC the kernel hits `u_max = 0.030`
+versus an analytical `0.030` (≤ 1.5 % across a 5k-step settling check).
 
-### GUI Application
-Launch the interactive GUI application:
+### Validation: Kármán vortex shedding
+
+Free-stream cylinder at `Re_D = 100`. Expected Strouhal from Williamson
+(1996):
+
+```
+St = 0.2660 − 1.0160 / sqrt(Re_D)    (47 ≤ Re_D ≤ 180)
+```
+
 ```bash
-python gui_app.py
+python validate_karman.py
 ```
 
-### Command Line Interface
-```python
-from fluid_sim import LBMSimulation, ConfigManager
+Records `Cl(t)` for many shedding cycles, FFTs to recover the dominant
+frequency, and prints measured vs. predicted Strouhal.
 
-# Load configuration
-config_manager = ConfigManager()
-config = config_manager.load_config()
+### Image + video output
 
-# Create simulation
-sim = LBMSimulation(
-    nx=config.nx, 
-    ny=config.ny,
-    reynolds=config.reynolds,
-    flow_speed=config.flow_speed
-)
+Two-row per-frame plot (velocity colormap on top, pressure fluctuation on
+bottom), with an MP4 assembled from the frames.
 
-# Setup obstacle
-sim.setup_cylinder_obstacle(
-    cx=config.obstacle_cx,
-    cy=config.obstacle_cy, 
-    r=config.obstacle_r
-)
-
-# Run simulation
-for i in range(1000):
-    diagnostics = sim.step()
-    if i % 100 == 0:
-        print(f"Step {i}: Max velocity = {diagnostics['max_velocity']:.4f}")
-```
-
-### Custom Obstacle from Image
-```python
-# Load obstacle from PNG file
-sim.setup_from_mask("path/to/obstacle_mask.png")
-
-# Or create geometric obstacles
-from fluid_sim.utils import create_obstacle
-obstacle = create_obstacle("circle", nx=250, ny=120, cx=60, cy=60, r=20)
-```
-
-## 🎯 GUI Features
-
-### Real-time Controls
-- **Grid Parameters**: Adjust simulation domain size
-- **Physical Parameters**: Modify Reynolds number and flow speed
-- **Obstacle Parameters**: Change obstacle position and size
-- **Simulation Controls**: Start/stop, single step, reset
-
-### Visualization Modes
-- **Velocity Tab**: Real-time velocity magnitude visualization
-- **Pressure Tab**: Pressure field visualization  
-- **Combined Tab**: Side-by-side velocity and pressure plots
-
-### Advanced Features
-- **Configuration Management**: Save/load simulation setups
-- **Stability Monitoring**: Real-time stability analysis
-- **Export Capabilities**: Save visualization images
-- **Diagnostics Panel**: Live simulation metrics
-
-## 📊 Configuration Management
-
-### JSON Configuration Format
-```json
-{
-  "nx": 250,
-  "ny": 120,
-  "reynolds": 300.0,
-  "flow_speed": 0.05,
-  "max_iterations": 5000,
-  "omega": null,
-  "obstacle_cx": 62.5,
-  "obstacle_cy": 60.0,
-  "obstacle_r": 13.3,
-  "colormap": "jet",
-  "dpi": 100
-}
-```
-
-### Configuration Usage
-```python
-from fluid_sim.utils import ConfigManager
-
-# Load existing configuration
-config_manager = ConfigManager()
-config = config_manager.load_config("my_config.json")
-
-# Modify parameters
-config_manager.update_config(reynolds=500.0, flow_speed=0.08)
-
-# Save configuration
-config_manager.save_config(config, "updated_config.json")
-```
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
 ```bash
-# Test new structure
-python test_new_structure.py
-
-# Test original functionality (legacy)
-python test_improvements.py
+python run_channel_cylinder.py     # cylinder + sponge + ramp
+python run_visualisation.py        # Poiseuille + Kármán batch
 ```
 
-## 📋 Mathematical Foundation
+Outputs:
 
-The simulation implements the **D2Q9 Lattice Boltzmann Method** with:
+```
+output/channel_cyl/frames/*.png
+output/channel_cyl/channel_cyl_video.mp4
+output/channel_cyl/channel_cyl_summary.png
+output/poiseuille_summary.png
+output/poiseuille.mp4
+output/karman_summary.png
+output/karman.mp4
+```
 
-### Core Equations
-- **Equilibrium Distribution**: Maxwell-Boltzmann expanded to second order
-- **Collision Operator**: BGK approximation with single relaxation time
-- **Streaming Step**: Advection of distribution functions
-- **Boundary Conditions**: Zou-He implementation for velocity/pressure boundaries
+---
 
-### Key Physical Properties
-- **Sound Speed**: cs = 1/√3 in lattice units
-- **Kinematic Viscosity**: ν = (1/ω - 0.5)/3
-- **Pressure**: P = ρ × cs² (proper equation of state)
-- **Stability Condition**: Mach number < 0.1 for numerical stability
+## Programmatic use
 
-## 🔧 Requirements
-
-### Core Dependencies
-- Python >= 3.8
-- numpy >= 1.19.0
-- matplotlib >= 3.3.0
-- pillow >= 8.0.0
-- scipy >= 1.6.0
-
-### Optional Dependencies
-- opencv-python >= 4.5.0 (for video output)
-- tkinter (usually included with Python)
-
-## 📚 Examples
-
-### Basic Cylinder Flow
 ```python
 from fluid_sim import LBMSimulation
 
-# Create simulation
-sim = LBMSimulation(nx=200, ny=100, reynolds=100)
+sim = LBMSimulation(nx=600, ny=160, reynolds=60.0, flow_speed=0.02,
+                    wall_mode="free_slip")
+sim.setup_cylinder_obstacle(cx=180, cy=80, r=15)
 
-# Setup cylinder obstacle  
-sim.setup_cylinder_obstacle(cx=50, cy=50, r=10)
+# Optional: smooth start-up + non-reflecting buffers.
+sim.ramp_steps         = 300
+sim.sponge_inlet_width = 60
+sim.sponge_outlet_width = 40
+sim.sponge_strength    = 0.4
 
-# Run simulation
-for i in range(1000):
-    diagnostics = sim.step()
-    
-    # Check stability
-    if not diagnostics['is_stable']:
-        print(f"Warning: Simulation unstable at step {i}")
+for _ in range(20_000):
+    d = sim.step()
+    if not d["is_stable"]:
+        break
+
+print(d["Cd"], d["Cl"], d["reynolds_realised"])
 ```
 
-### Custom Configuration
-```python
-from fluid_sim.utils import ConfigManager, SimulationConfig
+Available setup methods:
 
-# Create custom configuration
-config = SimulationConfig(
-    nx=300,
-    ny=150, 
-    reynolds=500.0,
-    flow_speed=0.1
-)
+| Method | Geometry | Walls |
+|---|---|---|
+| `setup_cylinder_obstacle(cx, cy, r)` | circle | inherits `wall_mode` |
+| `setup_rectangle_obstacle(cx, cy, length, width)` | rectangle | inherits `wall_mode` |
+| `setup_channel()` | empty | forces no-slip |
+| `setup_channel_with_cylinder(cx, cy, r)` | cylinder in channel | forces no-slip |
+| `setup_from_mask(path, scale)` | image-defined | inherits `wall_mode` |
 
-# Validate and save
-config_manager = ConfigManager()
-if config_manager.validate_config(config):
-    config_manager.save_config(config, "custom_config.json")
+Diagnostics dict from `sim.step()`:
+
+| Key | Meaning |
+|---|---|
+| `time_step`, `max_velocity`, `max_pressure`, `min_pressure` | self-explanatory |
+| `mach_number`, `is_stable` | `Mach < 0.1` and `0 < ω < 2` |
+| `omega`, `L_char` | derived from the actual obstacle |
+| `reynolds_target`, `reynolds_realised` | input vs. measured |
+| `Cd`, `Cl`, `force_x`, `force_y` | momentum-exchange force on obstacle |
+
+---
+
+## What was fixed in the audit
+
+Critical (kernel-level):
+
+* Top/bottom wall BCs were mislabelled comments — code was actually
+  clobbering the inlet/outlet columns. Replaced with a real free-slip /
+  no-slip / periodic switch.
+* No-slip implementation was applied at the wrong stage and on `fin`
+  pulled from the wrong y-row, leaking ~30 % of mass per step. Now
+  applied between collision and streaming, on `fout`, at the correct
+  `y` — verified mass-conserving across all three wall modes.
+* Zou/He inlet had a self-cancelling correction that reduced to a plain
+  equilibrium copy. Now the proper non-equilibrium bounce-back form.
+* Inlet velocity drifted because the OO refactor stored the macroscopic
+  field in `self.u`; the prescribed inlet now lives in `self.vel` and is
+  immutable through the run.
+* `setup_cylinder_obstacle` actually generates a circle (was a square).
+* Reynolds length scale follows the obstacle (was hard-coded `ny/9`).
+
+Significant:
+
+* `mps_to_lu` validates `dx`, `dt > 0` and is honest about the
+  conversion. The default lattice-unit usage is unchanged.
+* Pressure plot range is the symmetric fluctuation about the mean
+  (fixed `[0.001, 0.006]` window was outside the data range).
+* ρ-floor in the macroscopic-velocity divide.
+* Drag/lift via momentum exchange.
+* `ω` clamped to `[0.05, 1.95]` with a `RuntimeWarning`.
+* Smooth inlet ramp and sponge layers added so that visualisation runs
+  don't excite the impulsive-start acoustic mode.
+* Symmetric morphological `binary_opening` for `smooth_corners`
+  (previous structuring-element trick was anisotropic).
+* `rotate_obstacle` rebuilt on `scipy.ndimage.rotate` (no holes).
+
+The old `model_lib.py` legacy API has the same kernel-level fixes so that
+`model_run.py` produces correct physics.
+
+---
+
+## Requirements
+
+```
+numpy >= 1.19
+matplotlib >= 3.3
+pillow >= 8.0
+scipy >= 1.6
+opencv-python >= 4.5     # for MP4 assembly
 ```
 
-## 🤝 Contributing
+Python ≥ 3.8.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+---
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👨‍💻 Author
-
-**STOKEDMODELLER** - Fluid dynamics simulation enthusiast
-
-## 🙏 Acknowledgments
-
-- Lattice Boltzmann Method community for theoretical foundations
-- NumPy and SciPy developers for numerical computing tools
-- Matplotlib team for visualization capabilities
-- tkinter developers for GUI framework
+MIT.

@@ -19,19 +19,35 @@ def get_lattice_constants() -> Tuple[np.ndarray, np.ndarray, List[int], List[int
     """
     c = np.array([(x,y) for x in [0,-1,1] for y in [0,-1,1]]) # Lattice velocities.
     q = c.shape[0]
-    
+
     t = 1./36. * np.ones(q)  # Lattice weights.
     norm_ci = np.array([np.linalg.norm(ci) for ci in c])
     t[norm_ci < 1.1] = 1./9.
     t[0] = 4./9.
-    
-    noslip = [np.where((c == -c[i]).all(axis=1))[0][0] for i in range(q)]
-    
+
+    noslip = [int(np.where((c == -c[i]).all(axis=1))[0][0]) for i in range(q)]
+
     i1 = np.where(c[:, 0] < 0)[0].tolist()
     i2 = np.where(c[:, 0] == 0)[0].tolist()
     i3 = np.where(c[:, 0] > 0)[0].tolist()
-    
+
     return c, t, noslip, i1, i2, i3
+
+
+def get_y_wall_indices(c: np.ndarray):
+    """Indices needed to apply free-slip / mirror BCs on y=0 and y=ny-1.
+
+    Returns:
+        cy_pos: lattice indices with c_y > 0  (unknown on the y=0 wall).
+        cy_neg: lattice indices with c_y < 0  (unknown on the y=ny-1 wall).
+        y_mirror: index map (cx, cy) -> (cx, -cy) for free-slip reflection.
+    """
+    q = c.shape[0]
+    cy_pos = np.where(c[:, 1] > 0)[0].tolist()
+    cy_neg = np.where(c[:, 1] < 0)[0].tolist()
+    y_mirror = [int(np.where((c == c[i] * np.array([1, -1])).all(axis=1))[0][0])
+                for i in range(q)]
+    return cy_pos, cy_neg, y_mirror
 def mps_to_lu(flow_speed: float, dx: float, dt: float = 1.0) -> float:
     """
     Converts a flow velocity from meters per second to lattice units.
@@ -202,31 +218,16 @@ from scipy.ndimage import rotate
 
 def check_neighbors(matrix: np.ndarray) -> np.ndarray:
     """
-    Checks if each False cell in a binary matrix is surrounded by three True cells
-    (including diagonal neighbors), and sets it to True if it is.
-    
-    Parameters:
-    -----------
-    matrix : numpy.ndarray
-        Binary matrix to check.
-    
-    Returns:
-    --------
-    numpy.ndarray
-        Binary matrix with updated values.
+    Fill any False cell whose four orthogonal (N/S/E/W) neighbours are all True.
+
+    Diagonals are *not* considered. Useful for closing one-cell holes in
+    obstacle masks before the simulation runs.
     """
-    
-    # Copy the input matrix
     output = np.copy(matrix)
-    
-    # Find the cells that meet the condition (i.e., four adjacent True cells)
     condition = (~matrix[1:-1, 1:-1] &
                  matrix[1:-1, :-2] & matrix[1:-1, 2:] &
                  matrix[:-2, 1:-1] & matrix[2:, 1:-1])
-    
-    # Set the corresponding cells in the output matrix to True
     output[1:-1, 1:-1][condition] = True
-    
     return output
 from scipy.ndimage import binary_erosion, generate_binary_structure
 
@@ -315,17 +316,21 @@ def plot_velocity_pressure(u, pressure, time, directory,fig, ax,cmm):
     directory (str): path to directory where the files will be saved.
     """
     fig, (ax1, ax2) = plt.subplots(2, 1)
-    # Create subplots and adjust spacing
     fig.subplots_adjust(hspace=0.01)
 
-    # Plot velocity magnitude
-    ax1.imshow(np.sqrt(u[0]**2+u[1]**2).transpose(), cmap=cmm, vmax=0.08, vmin=0)
-    ax1.set_title('Velocity Magnitude')
+    vel_mag = np.sqrt(u[0]**2 + u[1]**2).transpose()
+    ax1.imshow(vel_mag, cmap=cmm, vmin=0.0, vmax=max(float(vel_mag.max()), 1e-6))
+    ax1.set_title('Velocity Magnitude (lattice units)')
     ax1.axis('off')
 
-    # Plot pressure
-    ax2.imshow(pressure.transpose(), cmap=cmm, vmax=0.006, vmin=0.001)
-    ax2.set_title('Pressure')
+    # Plot the pressure *fluctuation* about the lattice mean. The absolute
+    # pressure rho*c_s^2 ~ 0.333 swamps the interesting signal, so we centre
+    # on the mean and use a symmetric range.
+    p = pressure.transpose()
+    p_fluc = p - float(p.mean())
+    half = max(float(np.abs(p_fluc).max()), 1e-6)
+    ax2.imshow(p_fluc, cmap=cmm, vmin=-half, vmax=half)
+    ax2.set_title('Pressure fluctuation (lattice units)')
     ax2.axis('off')
 
     # Save figure
@@ -357,8 +362,8 @@ def setup_cylinder_obstacle_and_perturbation(q: int, rho: float, nx: int, ny: in
         - vel: Velocity field of shape (2, nx, ny)  
         - obstacle: Boolean obstacle mask of shape (nx, ny)
     """
-    # Set up rectangular obstacle (can be changed to circle if needed)
-    obstacle = create_obstacle("rectangle", nx, ny, int(cx), int(cy), int(r), int(r), int(r))
+    # Cylindrical (circular) obstacle.
+    obstacle = create_obstacle("circle", nx, ny, int(cx), int(cy), int(r))
     
     # Set up velocity inlet with perturbation
     vel = np.fromfunction(lambda d, x, y: (1-d)*uLB*(1.0 + epsilon*np.sin(y/ly*2*np.pi)), (2, nx, ny))
@@ -389,7 +394,7 @@ def sum_population(fin: np.ndarray) -> np.ndarray:
     return np.sum(fin, axis=0)
 
 
-def compute_fluid_flow(q: int, nx: int, ny: int, fin: np.ndarray, vel: np.ndarray, obstacle: np.ndarray, omega: float, t: np.ndarray, c: np.ndarray, i1: np.ndarray, i2: np.ndarray, i3: np.ndarray, noslip: np.ndarray) -> tuple:
+def compute_fluid_flow(q: int, nx: int, ny: int, fin: np.ndarray, vel: np.ndarray, obstacle: np.ndarray, omega: float, t: np.ndarray, c: np.ndarray, i1: np.ndarray, i2: np.ndarray, i3: np.ndarray, noslip: np.ndarray, wall_mode: str = "free_slip") -> tuple:
     """
     Computes fluid flow using Lattice Boltzmann Method.
     
@@ -435,50 +440,65 @@ def compute_fluid_flow(q: int, nx: int, ny: int, fin: np.ndarray, vel: np.ndarra
     assert fin.shape == (q, nx, ny), f"Distribution function shape mismatch: expected ({q}, {nx}, {ny}), got {fin.shape}"
     assert vel.shape == (2, nx, ny), f"Velocity field shape mismatch: expected (2, {nx}, {ny}), got {vel.shape}"
     assert obstacle.shape == (nx, ny), f"Obstacle array shape mismatch: expected ({nx}, {ny}), got {obstacle.shape}"
-    
-    # Set reflective boundary conditions at the top and bottom boundaries.
-    fin[:, 0, :] = fin[:, 1, :]     # top boundary (y=0)
-    fin[:, -1, :] = fin[:, -2, :]   # bottom boundary (y=ny-1)
-    
-    # Right wall: outflow condition
-    fin[i1, -1, :] = fin[i1, -2, :] 
-    
-    # Calculate macroscopic density and velocity
-    rho = compute_density(fin)  
-    u = np.dot(c.transpose(), fin.transpose((1, 0, 2))) / rho
 
-    # Left wall: apply inlet velocity boundary condition
+    # Top/bottom (y=0, y=ny-1) wall BC. Default is free-slip (mirror in y).
+    if wall_mode != "periodic":
+        cy_pos, cy_neg, y_mirror = get_y_wall_indices(c)
+        if wall_mode == "free_slip":
+            for i in cy_pos:
+                fin[i, :, 0] = fin[y_mirror[i], :, 0]
+            for i in cy_neg:
+                fin[i, :, -1] = fin[y_mirror[i], :, -1]
+        elif wall_mode == "noslip":
+            for i in cy_pos:
+                fin[i, :, 0] = fin[noslip[i], :, 0]
+            for i in cy_neg:
+                fin[i, :, -1] = fin[noslip[i], :, -1]
+        else:
+            raise ValueError(f"Unknown wall_mode '{wall_mode}'")
+
+    # Right wall: zero-gradient outflow on the unknown (c_x < 0) populations only.
+    fin[i1, -1, :] = fin[i1, -2, :]
+
+    # Macroscopic density and velocity (rho-floor avoids divide-by-zero in voids).
+    rho = compute_density(fin)
+    rho_safe = np.where(rho > 1e-8, rho, 1e-8)
+    u = np.dot(c.transpose(), fin.transpose((1, 0, 2))) / rho_safe
+
+    # Left wall: clamp to the prescribed inlet (vel is treated as immutable here).
     u[:, 0, :] = vel[:, 0, :]
-    
-    # Left wall: compute density from known populations using Zou/He boundary condition
-    # Avoid division by zero
+
+    # Left wall density via Zou/He.
     denominator = 1.0 - u[0, 0, :]
     safe_denominator = np.where(np.abs(denominator) < 1e-10, 1e-10, denominator)
     rho[0, :] = (1.0 / safe_denominator) * (compute_density(fin[i2, 0, :]) + 2.0 * compute_density(fin[i1, 0, :]))
 
-    # Compute equilibrium distribution
-    feq = equilibrium_distribution(q, nx, ny, rho, u, c, t) 
-    
-    # Left wall: Zou/He boundary condition for unknown distributions
-    fin[i3, 0, :] = fin[i1, 0, :] + feq[i3, 0, :] - fin[i1, 0, :]
-    
-    # Collision step (BGK approximation)
-    fout = fin - omega * (fin - feq)  
-    
-    # Apply bounce-back boundary condition at obstacles
-    for i in range(q): 
+    # Equilibrium with the corrected (rho, u).
+    feq = equilibrium_distribution(q, nx, ny, rho, u, c, t)
+
+    # Zou/He inlet for the unknown (c_x > 0) populations:
+    #   f_i = f_{opp(i)} + (f_i^eq - f_{opp(i)}^eq).
+    for i_unknown in i3:
+        i_known = noslip[i_unknown]
+        fin[i_unknown, 0, :] = (fin[i_known, 0, :]
+                                + feq[i_unknown, 0, :] - feq[i_known, 0, :])
+
+    # BGK collision.
+    fout = fin - omega * (fin - feq)
+
+    # Halfway bounce-back at obstacle nodes (interior obstacle skips collision).
+    for i in range(q):
         fout[i, obstacle] = fin[noslip[i], obstacle]
-    
-    # Streaming step
-    for i in range(q): 
+
+    # Streaming.
+    for i in range(q):
         fin[i, :, :] = np.roll(np.roll(fout[i, :, :], c[i, 0], axis=0), c[i, 1], axis=1)
-    
-    # Calculate pressure using proper equation of state for LBM
-    # In lattice units, pressure = density * cs^2, where cs^2 = 1/3 for D2Q9
+
+    # Lattice equation of state.
     rho = compute_density(fin)
-    cs_squared = 1.0/3.0  # Speed of sound squared in lattice units
+    cs_squared = 1.0/3.0
     pressure = rho * cs_squared
-    
+
     return fin, u, rho, feq, fout, pressure
 
 def validate_lattice_boltzmann_properties(fin: np.ndarray, c: np.ndarray, t: np.ndarray, tolerance: float = 1e-10) -> dict:
